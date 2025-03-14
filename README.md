@@ -1,6 +1,6 @@
-# disk2sa.ps1
+# Copy-AzManagedDiskToSA.ps1
 
-The `disk2sa.ps1` script is designed to copy managed disks to a storage account in Azure. This script automates the process of exporting managed disks as VHD files and storing them in a specified storage account.
+The `Copy-ManagedDiskToSA.ps1` script is designed to copy managed disks to a storage account in Azure. This script automates the process of exporting managed disks as VHD files and storing them in a specified storage account.
 
 ## Overview
 
@@ -13,7 +13,7 @@ To use the script, follow these steps:
 
 1. Ensure you have the necessary Azure PowerShell modules installed.
 2. Authenticate to your Azure account using `Connect-AzAccount`.
-3. Run the `disk2sa.ps1` script with the required parameters.
+3. Run the `Copy-AzManagedDiskToSA.ps1` script with the required parameters.
 
 ## Parameters
 
@@ -25,7 +25,9 @@ To use the script, follow these steps:
 ## Example
 
 ```powershell
-.\disk2sa.ps1 -ResourceGroupName "myResourceGroup" -DiskName "myManagedDisk" -StorageAccountName "myStorageAccount" -ContainerName "vhds"
+Connect-AzAccount
+
+.\Copy-AzManagedDiskToSA.ps1 -ResourceGroupName "myResourceGroup" -DiskName "myManagedDisk" -StorageAccountName "myStorageAccount" -ContainerName "vhds"
 ```
 
 This example copies the managed disk `myManagedDisk` from the resource group `myResourceGroup` to the storage account `myStorageAccount` in the container `vhds`.
