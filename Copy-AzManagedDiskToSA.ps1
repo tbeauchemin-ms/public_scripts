@@ -34,7 +34,9 @@ param(
 # Default values
 
 $intSASExpiryDuration = 3600
+$objAzContext = $null
 $objDestStorageAccountContext = $null
+$objManagedDiskSAS = $null
 
 # Copy the Parameters to local variables in case additional logic maybe needed.
 
