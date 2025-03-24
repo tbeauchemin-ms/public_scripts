@@ -21,7 +21,10 @@ param(
     [string]$StorageContainerName,
 
     [Parameter(Mandatory=$false)]
-    [string]$DestVHDFileName = "",
+    [string]$DestVHDBlobName = "",
+
+    [Parameter(Mandatory=$false)]
+    [bool]$UseAzCopy = $true,
 
     [Parameter(Mandatory=$false)]
     [bool]$UseConnectedAccount = $true
@@ -42,17 +45,20 @@ $strManagedDiskName = $ManagedDiskName
 $strStorageAccountName = $StorageAccountName
 $strStorageContainerName = $StorageContainerName
 
-if ($DestVHDFileName -eq "") {
-    $strDestVHDFileName = $ManagedDiskName + ".vhd"
+if ($DestVHDBlobName -eq "") {
+    $strDestVHDBlobName = $ManagedDiskName + ".vhd"
 }
 else {
-    $strDestVHDFileName = $DestVHDFileName
+    $strDestVHDBlobName = $DestVHDBlobName
 }
 
+$blnUseAzCopy = $UseAzCopy
 $blnUseConnectedAccount = $UseConnectedAccount
 
+# Check for a connection to Azure
+
 if ($blnUseConnectedAccount) {
-    # Check for a connection to Azure
+
     $objAzContext = Get-AzContext
 
     if ($null -eq $objAzContext) {
@@ -60,41 +66,84 @@ if ($blnUseConnectedAccount) {
         exit
     }
     else {
-        Write-Host "Connected to Azure using Azure Account: $($objAzContext.Account)"
+        Write-Host "Connected to Azure using..."
+        Write-Host " - Azure Account: $($objAzContext.Account)"
+        Write-Host " - Entra Id Tenant: $($objAzContext.Tenant)"
     }
 }
 else {
-    Write-Host "Script only supports conencting to Azure using an Entra Id account."
-    Write-Host "Run Connect-AzAccount to login and then rerun the script with the UseConnectedAccount parameter."
+    Write-Error "Script only supports conencting to Azure using an Entra Id."
+    Write-Error "Run Connect-AzAccount to login and then rerun the script with the UseConnectedAccount parameter."
     exit
 }
 
 # Set the context to the Subscription Id where Managed Disk is created
-Select-AzSubscription -SubscriptionId $strSubscriptionId
+
+Write-Host "Setting the Subscription to: $($strSubscriptionId)"
+Set-AzContext -SubscriptionId $strSubscriptionId
 
 # Generate the SAS for the Managed Disk
+
+Write-Host "Obtaining access to the Managed Disk..."
+Write-Host " - Resource Group: $($ResourceGroupName)"
+Write-Host " - Managed Disk: $($ManagedDiskName)"
+
 $objManagedDiskSAS = Grant-AzDiskAccess `
     -ResourceGroupName $strResourceGroupName `
     -DiskName $strManagedDiskName `
     -DurationInSecond $intSASExpiryDuration `
     -Access Read
 
-# Create the context of the Storage Account where the underlying VHD of the Managed Disk will be copied
-#   This assumes a user is logged in with the necessary permissions to the Storage Account using the Connect-AzAccount cmdlet.
-
-if ($blnUseConnectedAccount) {
-    $objDestStorageAccountContext = New-AzStorageContext `
-        -StorageAccountName $strStorageAccountName `
-        -UseConnectedAccount
-}
-else {
-    Write-Host "Script only supports conencting to Azure using an Entra Id account."
-    Write-Host "Run Connect-AzAccount to login and then rerun the script with the UseConnectedAccount parameter."
+if ($null -eq $objManagedDiskSAS) {
+    Write-Error "Failed to obtain access to the Managed Disk $($ManagedDiskName) in Resource Group $($ResourceGroupName) under Subscription $($strSubscriptionId)."
     exit
 }
 
-Start-AzStorageBlobCopy `
-    -AbsoluteUri $objManagedDiskSAS.AccessSAS `
-    -DestContainer $strStorageContainerName `
-    -DestContext $objDestStorageAccountContext `
-    -DestBlob $strDestVHDFileName
+Write-Host "Managed Disk access granted..."
+Write-Host " - SAS Token: $($objManagedDiskSAS.AccessSAS)"
+
+# Check if AzCopy is to be used to copy the VHD of the Managed Disk to the Storage Account
+
+if ($blnUseAzCopy) {
+
+    # Use AzCopy to copy the VHD of the Managed Disk to the Storage Account
+
+    $strAzCopyCommand = "azcopy copy '"
+    $strAzCopyCommand += $objManagedDiskSAS.AccessSAS + "' "
+
+    if ($blnUseConnectedAccount) {
+        $Env:AZCOPY_AUTO_LOGIN_TYPE="PSCRED"
+        $strAzCopyCommand += "https://" + $strStorageAccountName + ".blob.core.windows.net/" + $strStorageContainerName + "/" + $strDestVHDBlobName
+    }
+    else {
+        Write-Error "Script only supports conencting to Azure using an Entra Id."
+        Write-Error "Run Connect-AzAccount to login and then rerun the script with the UseConnectedAccount parameter."
+        exit
+    }
+
+    Write-Host "Using AzCopy to copy Managed Disk to the Storage Account..."
+    Write-Host " - AzCopy Command: $($strAzCopyCommand)"
+
+    Invoke-Expression $strAzCopyCommand
+
+}
+else {
+
+    if ($blnUseConnectedAccount) {
+        $objDestStorageAccountContext = New-AzStorageContext `
+            -StorageAccountName $strStorageAccountName `
+            -UseConnectedAccount
+    }
+    else {
+        Write-Error "Script only supports conencting to Azure using an Entra Id account."
+        Write-Error "Run Connect-AzAccount to login and then rerun the script with the UseConnectedAccount parameter."
+        exit
+    }
+
+    Start-AzStorageBlobCopy `
+        -AbsoluteUri $objManagedDiskSAS.AccessSAS `
+        -DestContainer $strStorageContainerName `
+        -DestContext $objDestStorageAccountContext `
+        -DestBlob $strDestVHDBlobName
+
+}
