@@ -30,10 +30,10 @@ The `Test-BlobContainerBackups.ps1` script checks whether blob containers in you
 
 ```powershell
 # For interactive login
-[Test-BlobContainerBackups.ps1](http://_vscodecontentref_/0)
+Test-BlobContainerBackups
 
 # For managed identity (e.g., in Azure Automation or VM with managed identity)
-[Test-BlobContainerBackups.ps1](http://_vscodecontentref_/1) -AuthMethod ManagedIdentity
+Test-BlobContainerBackups -AuthMethod ManagedIdentity
 ```
 
 ## Example Output
