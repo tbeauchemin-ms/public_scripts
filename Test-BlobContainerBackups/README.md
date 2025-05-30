@@ -1,6 +1,6 @@
-# Test-BlobContainerBackups.ps1
+# Test-BlobContainerBackups
 
-The `Test-BlobContainerBackups.ps1` script checks whether blob containers in your Azure Storage Accounts are protected by Azure Backup. It provides a summary of protected and unprotected containers across all storage accounts in your current Azure context.
+The `Test-BlobContainerBackups` script checks whether blob containers in your Azure Storage Accounts are protected by Azure Backup. It provides a summary of protected and unprotected containers across all storage accounts in your current Azure context.
 
 ## Features
 
@@ -19,9 +19,15 @@ The `Test-BlobContainerBackups.ps1` script checks whether blob containers in you
 
 ## Parameters
 
-| Name        | Type   | Description                                                                 | Default        |
-|-------------|--------|-----------------------------------------------------------------------------|----------------|
-| AuthMethod  | string | Authentication method: `Interactive` or `ManagedIdentity`                   | Interactive    |
+| Name               | Type   | Description                                                                                                   | Default        |
+|--------------------|--------|---------------------------------------------------------------------------------------------------------------|----------------|
+| AuthMethod         | string | Authentication method: `Interactive` or `ManagedIdentity`                                                     | Interactive    |
+| LogMethod          | string | Logging method: `Disabled`, `AzureMonitor`, or `LocalFile`                                                    | Disabled       |
+| LocalLogFilePath   | string | Path to the local log file (used if `LogMethod` is `LocalFile`)                                               | BlobContainerBackupLog.csv |
+| LogApiAuthMethod   | string | Authentication method for Log Ingestion API (currently only `ManagedIdentity` is supported)                   | ManagedIdentity |
+| LogApiDceUri       | string | Data Collection Endpoint URI for Log Ingestion API (required if `LogMethod` is `AzureMonitor`)                |                |
+| LogApiDcrImmutableId | string | Immutable ID of the Data Collection Rule for Log Ingestion API (required if `LogMethod` is `AzureMonitor`)  |                |
+| LogApiDcrStreamName | string | Stream name for the Data Collection Rule for Log Ingestion API (required if `LogMethod` is `AzureMonitor`)   |                |
 
 ## Usage
 
@@ -34,6 +40,12 @@ Test-BlobContainerBackups
 
 # For managed identity (e.g., in Azure Automation or VM with managed identity)
 Test-BlobContainerBackups -AuthMethod ManagedIdentity
+
+# To log results to a local CSV file
+Test-BlobContainerBackups -LogMethod LocalFile -LocalLogFilePath "C:\temp\BlobBackupLog.csv"
+
+# To send logs to Azure Monitor Log Ingestion API
+Test-BlobContainerBackups -LogMethod AzureMonitor -LogApiAuthMethod ManagedIdentity -LogApiDceUri "<DCE URI>" -LogApiDcrImmutableId "<DCR Immutable ID>" -LogApiDcrStreamName "<Stream Name>"
 ```
 
 ## Example Output

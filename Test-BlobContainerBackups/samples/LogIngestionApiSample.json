@@ -1,0 +1,35 @@
+[
+  {
+    "TimeGenerated": "2024-06-07T14:23:01.1234567Z",
+    "StorageAccountResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-demo/providers/Microsoft.Storage/storageAccounts/sademo01",
+    "SubscriptionId": "11111111-2222-3333-4444-555555555555",
+    "ResourceGroupName": "rg-demo",
+    "StorageAccountName": "sademo01",
+    "ContainerName": "container1",
+    "IsProtected": true,
+    "BackupVaultResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-demo/providers/Microsoft.DataProtection/backupVaults/vault-demo",
+    "BackupPolicyResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-demo/providers/Microsoft.DataProtection/backupVaults/vault-demo/backupPolicies/policy-demo"
+  },
+  {
+    "TimeGenerated": "2024-06-07T14:23:01.1234567Z",
+    "StorageAccountResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-demo/providers/Microsoft.Storage/storageAccounts/sademo01",
+    "SubscriptionId": "11111111-2222-3333-4444-555555555555",
+    "ResourceGroupName": "rg-demo",
+    "StorageAccountName": "sademo01",
+    "ContainerName": "container2",
+    "IsProtected": false,
+    "BackupVaultResourceId": null,
+    "BackupPolicyResourceId": null
+  },
+  {
+    "TimeGenerated": "2024-06-07T14:23:01.1234567Z",
+    "StorageAccountResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/saprod01",
+    "SubscriptionId": "11111111-2222-3333-4444-555555555555",
+    "ResourceGroupName": "rg-prod",
+    "StorageAccountName": "saprod01",
+    "ContainerName": "prodcontainer",
+    "IsProtected": true,
+    "BackupVaultResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-prod/providers/Microsoft.DataProtection/backupVaults/vault-prod",
+    "BackupPolicyResourceId": "/subscriptions/11111111-2222-3333-4444-555555555555/resourceGroups/rg-prod/providers/Microsoft.DataProtection/backupVaults/vault-prod/backupPolicies/policy-prod"
+  }
+]
