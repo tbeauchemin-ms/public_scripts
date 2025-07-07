@@ -4,20 +4,29 @@
 
 .DESCRIPTION
     This script retrieves all Storage Accounts and checks each Blob container to see if it is protected by Azure Backup in any Backup Vault.
-    It can logg the results to a local CSV file or sends them to Azure Monitor Log Ingestion API based on the specified parameters.
+    It can log the results to a local CSV file or send them to Azure Monitor Log Ingestion API based on the specified parameters.
 
 .PARAMETER AuthMethod
     Authentication method to use. Allowed values are "Interactive" and "ManagedIdentity". Default is "Interactive".
 
 .PARAMETER LogMethod
     Method of logging results. Allowed values are "Disabled", "AzureMonitor", and "LocalFile". Default is "Disabled".
-    Logging using LocalFile is not suppored when running in Azure Automation.
+    Logging using LocalFile is not supported when running in Azure Automation.
 
 .PARAMETER LocalLogFilePath
     Path to the local log file where results will be saved if LogMethod is set to "LocalFile". Default is "BlobContainerBackupLog.csv".
 
 .PARAMETER LogApiAuthMethod
-    Authentication method for Log Ingestion API. Currently only "ManagedIdentity" is supported.
+    Authentication method for Log Ingestion API. Allowed values are "AppId" and "ManagedIdentity".
+
+.PARAMETER LogApiTenantId
+    Entra ID Tenant ID to use when authenticating with the Log Ingestion API using an App Registration. Required if LogApiAuthMethod is set to "AppId".
+
+.PARAMETER LogApiAppId
+    Entra ID Application (client) ID to use when authenticating with the Log Ingestion API using AppId. Required if LogApiAuthMethod is set to "AppId".
+
+.PARAMETER LogApiAppSecret
+    Entra ID Application secret to use when authenticating with the Log Ingestion API using AppId. Required if LogApiAuthMethod is set to "AppId".
 
 .PARAMETER LogApiDceUri
     Data Collection Endpoint URI for Log Ingestion API. Required if LogMethod is set to "AzureMonitor".
@@ -27,6 +36,9 @@
 
 .PARAMETER LogApiDcrStreamName
     Stream name for the Data Collection Rule for Log Ingestion API. Required if LogMethod is set to "AzureMonitor".
+
+.PARAMETER MessageLevel
+    Controls the verbosity of script output. Allowed values are "Debug", "Verbose", "Information", "Warning", and "Error". Default is "Information".
 
 .NOTES
     Requires Az.Accounts, Az.Storage, and Az.DataProtection modules.
@@ -44,21 +56,86 @@ param(
     [string] $LogMethod = "Disabled",
 
     [Parameter(Mandatory=$false)]
+    [ValidateNotNull()]
     [string] $LocalLogFilePath = "BlobContainerBackupLog.csv",
 
     [Parameter(Mandatory=$false)]
-    [ValidateSet("ManagedIdentity")]
-    [string] $LogApiAuthMethod = "ManagedIdentity",
+    [ValidateSet("AppId", "ManagedIdentity")]
+    [string] $LogApiAuthMethod,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateNotNull()]
+    [string] $LogApiTenantId,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateNotNull()]
+    [string] $LogApiAppId,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateNotNull()]
+    [securestring] $LogApiAppSecret,
 
     [Parameter(Mandatory=$false)]
     [string] $LogApiDceUri,
 
     [Parameter(Mandatory=$false)]
+    [ValidatePattern("dcr\-[0-9a-z]+")]
     [string] $LogApiDcrImmutableId,
 
     [Parameter(Mandatory=$false)]
-    [string] $LogApiDcrStreamName
+    [ValidateNotNull()]
+    [string] $LogApiDcrStreamName,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("Debug", "Verbose", "Information", "Warning", "Error")]
+    [string] $MessageLevel = "Information"
 )
+
+# Set output preferences based on MessageLevel
+switch ($MessageLevel) {
+    "Debug" {
+        $DebugPreference = "Continue"
+        $VerbosePreference = "Continue"
+        $InformationPreference = "Continue"
+        $WarningPreference = "Continue"
+        $ErrorActionPreference = "Continue"
+    }
+    "Verbose" {
+        $DebugPreference = "SilentlyContinue"
+        $VerbosePreference = "Continue"
+        $InformationPreference = "Continue"
+        $WarningPreference = "Continue"
+        $ErrorActionPreference = "Continue"
+    }
+    "Information" {
+        $DebugPreference = "SilentlyContinue"
+        $VerbosePreference = "SilentlyContinue"
+        $InformationPreference = "Continue"
+        $WarningPreference = "Continue"
+        $ErrorActionPreference = "Continue"
+    }
+    "Warning" {
+        $DebugPreference = "SilentlyContinue"
+        $VerbosePreference = "SilentlyContinue"
+        $InformationPreference = "SilentlyContinue"
+        $WarningPreference = "Continue"
+        $ErrorActionPreference = "Continue"
+    }
+    "Error" {
+        $DebugPreference = "SilentlyContinue"
+        $VerbosePreference = "SilentlyContinue"
+        $InformationPreference = "SilentlyContinue"
+        $WarningPreference = "SilentlyContinue"
+        $ErrorActionPreference = "Continue"
+    }
+    default {
+        $DebugPreference = "SilentlyContinue"
+        $VerbosePreference = "SilentlyContinue"
+        $InformationPreference = "Continue"
+        $WarningPreference = "Continue"
+        $ErrorActionPreference = "Continue"
+    }
+}
 
 # Ensure Az modules are imported
 Import-Module Az.Accounts -ErrorAction Stop
@@ -72,19 +149,69 @@ function Get-LogIngestionApiAuthToken {
     [OutputType([System.Security.SecureString])]
     param ()
 
-    try {
-        $secureAccessToken = Get-AzAccessToken -ResourceUrl "https://monitor.azure.com/" -AsSecureString -ErrorAction Stop
-        if ($null -eq $secureAccessToken -or [string]::IsNullOrWhiteSpace($secureAccessToken.Token)) {
-            Write-Error "Access token is null or empty."
-            return $null
-        }
-        Write-Information "Successfully obtained access token for Log Ingestion API."
-        return $secureAccessToken.Token
-    }
-    catch {
-        Write-Error "Failed to get access token for Log Ingestion API: $($_.Exception)"
+    [System.Security.SecureString] $secureBearerToken = $null
+
+    if (-not $LogApiAuthMethod) {
+        Write-Error "Azure Monitor Log Ingrestion API authentication method is not specified."
         return $null
     }
+
+    if ("AppId" -eq $LogApiAuthMethod) {
+
+        if (-not $LogApiTenantId -or -not $LogApiAppId -or -not $LogApiAppSecret) {
+            Write-Error "Log Ingestion API authentication parameters are not fully specified."
+            Write-Error "Please provide LogApiTenantId, LogApiAppId, and LogApiAppSecret when using an AppId for authentication."
+            return $null
+        }
+
+        $scope= [System.Web.HttpUtility]::UrlEncode("https://monitor.azure.com//.default")
+        $body = "client_id=$($LogApiAppId)&scope=$($scope)&client_secret=$(ConvertFrom-SecureString -SecureString $LogApiAppSecret -AsPlainText)&grant_type=client_credentials";
+        $headers = @{"Content-Type"="application/x-www-form-urlencoded"};
+        $uri = "https://login.microsoftonline.com/$($LogApiTenantId)/oauth2/v2.0/token"
+
+        try {
+            $secureBearerToken = ConvertTo-SecureString `
+                -String (Invoke-RestMethod -Uri $uri -Method "Post" -Body $body -Headers $headers).access_token `
+                -AsPlainText -Force
+        }
+        catch {
+            Write-Error "Failed to get access token for Log Ingestion API token: $($_.Exception.Message)"
+            return $null
+        }
+
+    }
+
+    if ("ManagedIdentity" -eq $LogApiAuthMethod) {
+
+        try {
+            $supportsSecureString = ($null -ne (Get-Command Get-AzAccessToken).Parameters["AsSecureString"])
+            if ($supportsSecureString) {
+                $secureAccessToken = Get-AzAccessToken -ResourceUrl "https://monitor.azure.com/" -AsSecureString -ErrorAction Stop
+                if ($null -eq $secureAccessToken -or [string]::IsNullOrWhiteSpace($secureAccessToken.Token)) {
+                    Write-Error "Access token is null or empty."
+                    return $null
+                }
+                Write-Information "Successfully obtained access token for Log Ingestion API (SecureString)."
+                $secureBearerToken = $secureAccessToken.Token
+            } else {
+                $accessToken = Get-AzAccessToken -ResourceUrl "https://monitor.azure.com/" -ErrorAction Stop
+                if ($null -eq $accessToken -or [string]::IsNullOrWhiteSpace($accessToken.Token)) {
+                    Write-Error "Access token is null or empty."
+                    return $null
+                }
+                Write-Information "Successfully obtained access token for Log Ingestion API (converted to SecureString)."
+                $secureBearerToken = = ConvertTo-SecureString $accessToken.Token -AsPlainText -Force
+            }
+        }
+        catch {
+            Write-Error "Failed to get access token for Log Ingestion API: $($_.Exception.Message)"
+            return $null
+        }
+
+    }
+
+    return $secureBearerToken
+
 }
 
 # Helper: Send data to Log Ingestion API
@@ -214,6 +341,7 @@ function Test-BlobContainerBackup {
 }
 
 ### Main Script Execution
+$runTimeUTC = (Get-Date).ToUniversalTime().ToString("o")
 
 Write-Output "Starting Blob Container Backup Check..."
 
@@ -222,6 +350,9 @@ Write-Debug "  AuthMethod: $($AuthMethod)"
 Write-Debug "  LogMethod: $($LogMethod)"
 Write-Debug "  LocalLogFilePath: $($LocalLogFilePath)"
 Write-Debug "  LogApiAuthMethod: $($LogApiAuthMethod)"
+Write-Debug "  LogApiAppId: $($LogApiAppId)"
+Write-Debug "  LogApiAppSecret: $($LogApiAppSecret)"
+Write-Debug "  LogApiTenantId: $($LogApiTenantId)"
 Write-Debug "  LogApiDceUri: $($LogApiDceUri)"
 Write-Debug "  LogApiDcrImmutableId: $($LogApiDcrImmutableId)"
 Write-Debug "  LogApiDcrStreamName: $($LogApiDcrStreamName)"
@@ -257,6 +388,7 @@ $allLogEntries = @()
 
 if ($storageAccounts -and $storageAccounts.Count -gt 0) {
     Write-Information " - Found $($storageAccounts.Count) Storage Accounts."
+
     foreach ($account in $storageAccounts) {
         $totalStorageAccounts++
         Write-Output "Checking Storage Account: $($account.StorageAccountName) in Resource Group: $($account.ResourceGroupName)"
@@ -285,7 +417,7 @@ if ($storageAccounts -and $storageAccounts.Count -gt 0) {
             }
             if ($LogMethod -ne "Disabled") {
                 $logEntry = [PSCustomObject]@{
-                    TimeGenerated            = (Get-Date).ToUniversalTime().ToString("o")
+                    TimeGenerated            = $runTimeUTC
                     StorageAccountResourceId = $account.Id
                     SubscriptionId           = $account.Id.Split("/")[2]
                     ResourceGroupName        = $account.ResourceGroupName
@@ -303,6 +435,7 @@ if ($storageAccounts -and $storageAccounts.Count -gt 0) {
         $totalUnprotected += $unprotectedCount
         Write-Output "  Storage Account Summary: $containerCount containers, $protectedCount protected, $unprotectedCount unprotected."
     }
+
     # Write all log entries at once if LocalFile logging is enabled
     if ($LogMethod -eq "LocalFile" -and $allLogEntries.Count -gt 0) {
         Write-Information "Writing log entries to Local File $($LocalLogFilePath)..."
@@ -312,6 +445,7 @@ if ($storageAccounts -and $storageAccounts.Count -gt 0) {
         Write-Information "Sending log entries to Azure Monitor Log Ingestion API..."
         Send-LogIngestionApiData -LogEntries $allLogEntries
     }
+
     Write-Output ""
     Write-Output "================== OVERALL SUMMARY =================="
     Write-Output "Storage Accounts searched: $totalStorageAccounts"
