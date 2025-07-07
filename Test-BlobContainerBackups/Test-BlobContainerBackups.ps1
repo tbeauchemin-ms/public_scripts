@@ -175,7 +175,7 @@ function Get-LogIngestionApiAuthToken {
                 -AsPlainText -Force
         }
         catch {
-            Write-Error "Failed to get access token for Log Ingestion API token: $($_.Exception.Message)"
+            Write-Error "Failed to get access token for Log Ingestion API token using App Id: $($_.Exception.Message)"
             return $null
         }
 
@@ -200,11 +200,11 @@ function Get-LogIngestionApiAuthToken {
                     return $null
                 }
                 Write-Information "Successfully obtained access token for Log Ingestion API (converted to SecureString)."
-                $secureBearerToken = = ConvertTo-SecureString $accessToken.Token -AsPlainText -Force
+                $secureBearerToken = ConvertTo-SecureString $accessToken.Token -AsPlainText -Force
             }
         }
         catch {
-            Write-Error "Failed to get access token for Log Ingestion API: $($_.Exception.Message)"
+            Write-Error "Failed to get access token for Log Ingestion API using Managed Identity: $($_.Exception.Message)"
             return $null
         }
 
